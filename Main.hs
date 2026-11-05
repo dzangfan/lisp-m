@@ -152,7 +152,7 @@ getInput st = case cooked st of
     editLine (Config (colour st) w (complete st) attrs) (past st)
   Nothing -> plainInput
 
--- Without a terminal, read lines until the brackets balance
+-- Without a terminal, read lines until brackets and comments are closed
 plainInput :: IO (Maybe String)
 plainInput = go []
   where
@@ -293,7 +293,7 @@ help st = mapM_ say $
        , ("C-y", "yank the last kill")
        , ("C-t", "transpose characters")
        , ("C-_ C-/", "undo")
-       , ("RET", "submit when the brackets balance, otherwise start a new line")
+       , ("RET", "submit when nothing is left open, otherwise start a new line")
        , ("C-j M-RET", "always start a new line")
        , ("TAB", "complete names, commands and file names")
        , ("C-l", "clear the screen")
@@ -309,6 +309,8 @@ help st = mapM_ say $
        , ("#m[a; b]", "is replaced by e, with x and y replaced by a and b")
        , ("T NIL", "true and false; NIL is also the empty list")
        , ("A (A B) (A . B)", "S-expressions: atoms, lists and pairs")
+       , ("// text", "comment to the end of the line")
+       , ("/* text */", "comment, possibly over several lines")
        ]
   where
     section title style rows =
@@ -404,8 +406,9 @@ data Scan = Scan
   , strays :: [Int]                -- closing brackets that match nothing
   }
 
+-- Brackets in comments are ignored
 scan :: String -> Scan
-scan = go 0 (Scan [] [] [])
+scan = go 0 (Scan [] [] []) . code
   where
     go _ r [] = r
     go i r (c : cs)
@@ -415,6 +418,24 @@ scan = go 0 (Scan [] [] [])
           _ -> go (i + 1) r{strays = i : strays r} cs
       | otherwise = go (i + 1) r cs
 
+-- Which characters are in comments, and whether a /* is left open
+comments :: String -> ([Bool], Bool)
+comments = \case
+  '/' : '/' : s -> let (c, r) = break (== '\n') s in prefix (2 + length c) (comments r)
+  '/' : '*' : s -> inside 2 s
+  _ : s -> let (bs, o) = comments s in (False : bs, o)
+  [] -> ([], False)
+  where
+    prefix n (bs, o) = (replicate n True ++ bs, o)
+    inside n = \case
+      '*' : '/' : s -> prefix (n + 2) (comments s)
+      _ : s -> inside (n + 1) s
+      [] -> (replicate n True, True)
+
+-- The text with comments blanked out, keeping positions and newlines
+code :: String -> String
+code s = zipWith (\c b -> if b && c /= '\n' then ' ' else c) s (fst (comments s))
+
 unclosed :: String -> [Int]
 unclosed t = [j | (j, _, _) <- opens (scan t)]
 
@@ -423,7 +444,7 @@ isCommand t = take 1 (dropWhile isSpace t) == ":"
 
 -- Whether an input is complete, or so broken that the parser should report it
 ready :: String -> Bool
-ready t = isCommand t || null (opens r) || not (null (strays r))
+ready t = isCommand t || not (snd (comments t)) && (null (opens r) || not (null (strays r)))
   where r = scan t
 
 -- One SGR style per character; the bracket pair at the cursor is shown inverted
@@ -433,7 +454,7 @@ highlight cursor s
       let (sp, r) = span isSpace s
           (cmd, args) = break isSpace r
       in map (const "") sp ++ map (const "1;36") cmd ++ map (const "") args
-  | otherwise = zipWith pick [0 ..] (tokens s)
+  | otherwise = zipWith3 pick [0 ..] (fst (comments s)) (tokens s)
   where
     Scan os ps bad = scan s
     rainbow d = ["94", "95", "96", "93", "92"] !! (d `mod` 5)
@@ -444,7 +465,8 @@ highlight cursor s
     matched = case cursor of
       Nothing -> []
       Just c -> take 2 (concat ([[j, i] | (j, i, _) <- ps, i == c - 1] ++ [[j, i] | (j, i, _) <- ps, j == c]))
-    pick i sty = case IM.lookup i bracket of
+    pick _ True _ = "3;90"
+    pick i False sty = case IM.lookup i bracket of
       Just b | i `elem` matched -> b ++ ";1;7"
              | otherwise -> b
       Nothing -> sty

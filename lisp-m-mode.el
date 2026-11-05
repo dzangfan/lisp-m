@@ -10,14 +10,16 @@
 ;; A major mode for `.lisp-m' files, written in the M-expression
 ;; language of McCarthy's 1960 paper as read by the lisp-m interpreter:
 ;;
-;;   ff[x] = {atom[x] -> x; T -> ff[car[x]]}
+;;   // The first atom of x
+;;   ff[x] = {atom[x] -> x; /* else */ T -> ff[car[x]]}
 ;;
 ;; including its macros, which are definitions and calls tagged by #:
 ;;
 ;;   #if[p; a; b] = {p -> a; T -> b}
 ;;   last[x] = #if[atom[cdr[x]]; car[x]; last[cdr[x]]]
 ;;
-;; It provides syntax highlighting and indentation.  A new line inside
+;; It provides syntax highlighting, indentation and C-style comments,
+;; // to the end of the line and /* ... */, for `comment-dwim' (M-;).  A new line inside
 ;; brackets is aligned just inside the innermost open bracket, as in
 ;;
 ;;   subst[x; y; z] = {atom[z] -> {eq[z; y] -> x; T -> z};
@@ -79,8 +81,12 @@ the line after its `='."
     (modify-syntax-entry ?\] ")[" st)
     (modify-syntax-entry ?\{ "(}" st)
     (modify-syntax-entry ?\} "){" st)
-    (dolist (c '(?\; ?. ?= ?- ?>))
+    (dolist (c '(?\; ?. ?= ?- ?> ?\"))
       (modify-syntax-entry c "." st))
+    ;; Comments: // to the end of the line, and /* */
+    (modify-syntax-entry ?/ ". 124b" st)
+    (modify-syntax-entry ?* ". 23" st)
+    (modify-syntax-entry ?\n "> b" st)
     (modify-syntax-entry ?# "'" st)
     st)
   "Syntax table for `lisp-m-mode'.")
@@ -106,17 +112,19 @@ the line after its `='."
   "Highlighting for `lisp-m-mode'.")
 
 (defun lisp-m--hanging-p (open)
-  "Whether the bracket at OPEN is the last thing on its line."
+  "Whether the bracket at OPEN is the last thing on its line.
+A comment after the bracket does not count."
   (save-excursion
     (goto-char (1+ open))
-    (skip-chars-forward " \t")
-    (eolp)))
+    (let ((eol (line-end-position)))
+      (forward-comment (buffer-size))
+      (or (> (point) eol) (eobp)))))
 
 (defun lisp-m--after-equals-p ()
-  "Whether the previous non-blank text ends with `='."
+  "Whether the previous text, apart from comments, ends with `='."
   (save-excursion
     (beginning-of-line)
-    (skip-chars-backward " \t\n")
+    (forward-comment (- (buffer-size)))
     (eq (char-before) ?=)))
 
 (defun lisp-m-indent-level ()
@@ -125,8 +133,12 @@ the line after its `='."
     (back-to-indentation)
     ;; syntax-ppss moves point, so look at the line first
     (let* ((closing (looking-at "\\s)"))
-           (open (nth 1 (syntax-ppss (line-beginning-position)))))
+           (state (syntax-ppss (line-beginning-position)))
+           (open (nth 1 state)))
       (cond
+       ;; Inside a /* */ comment, keep what the author wrote
+       ((nth 4 state)
+        (current-indentation))
        ((null open)
         (if (lisp-m--after-equals-p) lisp-m-indent-offset 0))
        ((lisp-m--hanging-p open)
@@ -152,7 +164,11 @@ the line after its `='."
 (define-derived-mode lisp-m-mode prog-mode "Lisp-M"
   "Major mode for editing M-expression Lisp files."
   :syntax-table lisp-m-mode-syntax-table
-  (setq-local font-lock-defaults '(lisp-m-font-lock-keywords t))
+  (setq-local font-lock-defaults '(lisp-m-font-lock-keywords))
+  (setq-local comment-start "// ")
+  (setq-local comment-end "")
+  (setq-local comment-start-skip "\\(?://+\\|/\\*+\\)[ \t]*")
+  (setq-local comment-end-skip "[ \t]*\\*+/")
   (setq-local indent-line-function #'lisp-m-indent-line)
   (setq-local indent-tabs-mode nil)
   (setq-local electric-indent-chars (append "])}" electric-indent-chars)))

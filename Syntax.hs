@@ -20,8 +20,13 @@ instance AtBool String where
 
 -- Lexemes
 
+-- White space, including comments: // to the end of the line, and
+-- /* to the next */, which may span lines and does not nest, as in C
 sc :: Parser ()
-sc = spaces
+sc = skipMany (skipMany1 space <|> lineComment <|> blockComment) <?> ""
+  where
+    lineComment  = try (string "//") *> skipMany (noneOf "\n")
+    blockComment = try (string "/*") *> (manyTill anyChar (try (string "*/")) <?> "end of comment */") *> pure ()
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* sc
