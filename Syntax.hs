@@ -54,11 +54,17 @@ sexp = SAt <$> atom <|> parens body <?> "S-expression"
              else option nil (symbol "." *> sexp)
       return (foldr SPr end xs)
 
--- M-expressions: x | f[m; ...] | {m -> m; ...} | S-expression
+-- Macro names are tagged with #; a macro call #m[...] is kept as an
+-- application of the function named #m until it is expanded
+macroName :: Parser Name
+macroName = lexeme ((:) <$> char '#' <*> many1 lower) <?> "macro name"
+
+-- M-expressions: x | f[m; ...] | #m[m; ...] | {m -> m; ...} | S-expression
 
 mexp :: Parser (MExp String)
-mexp = cond <|> (MLit <$> sexp) <|> varOrApp <?> "M-expression"
+mexp = cond <|> (MLit <$> sexp) <|> macroCall <|> varOrApp <?> "M-expression"
   where
+    macroCall = MApp <$> macroName <*> brackets (mexp `sepBy` symbol ";")
     varOrApp = do
       f <- ident
       option (MVar f) (brackets (mexp `sepBy` symbol ";") >>= builtin f)
@@ -69,16 +75,20 @@ builtins :: [Name]
 builtins = ["atom", "eq", "cons", "car", "cdr"]
 
 builtin :: Name -> [MExp String] -> Parser (MExp String)
-builtin "atom" [m]    = return (MAtom m)
-builtin "eq"   [m, n] = return (MEq m n)
-builtin "cons" [m, n] = return (MCons m n)
-builtin "car"  [m]    = return (MCar m)
-builtin "cdr"  [m]    = return (MCdr m)
-builtin f ms
-  | f `elem` builtins = fail ("Wrong number of arguments for " ++ f)
-  | otherwise         = return (MApp f ms)
+builtin f ms = either fail return (apply f ms)
 
--- Definitions: f[x; ...] = m
+-- An application of f, which may be a built-in
+apply :: Name -> [MExp String] -> Either String (MExp String)
+apply "atom" [m]    = Right (MAtom m)
+apply "eq"   [m, n] = Right (MEq m n)
+apply "cons" [m, n] = Right (MCons m n)
+apply "car"  [m]    = Right (MCar m)
+apply "cdr"  [m]    = Right (MCdr m)
+apply f ms
+  | f `elem` builtins = Left ("Wrong number of arguments for " ++ f)
+  | otherwise         = Right (MApp f ms)
+
+-- Definitions: f[x; ...] = m, and macros: #m[x; ...] = m
 
 mdef :: Parser (MDef String)
 mdef = do
@@ -86,7 +96,7 @@ mdef = do
   m <- mexp
   return (f, (xs, m))
   where
-    header = (,) <$> ident <*> brackets (ident `sepBy` symbol ";") <* symbol "="
+    header = (,) <$> (macroName <|> ident) <*> brackets (ident `sepBy` symbol ";") <* symbol "="
 
 -- Programs: a sequence of definitions and expressions
 

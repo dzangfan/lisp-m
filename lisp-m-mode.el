@@ -12,6 +12,11 @@
 ;;
 ;;   ff[x] = {atom[x] -> x; T -> ff[car[x]]}
 ;;
+;; including its macros, which are definitions and calls tagged by #:
+;;
+;;   #if[p; a; b] = {p -> a; T -> b}
+;;   last[x] = #if[atom[cdr[x]]; car[x]; last[cdr[x]]]
+;;
 ;; It provides syntax highlighting and indentation.  A new line inside
 ;; brackets is aligned just inside the innermost open bracket, as in
 ;;
@@ -55,6 +60,10 @@ the line after its `='."
                    'font-lock-function-name-face)))
   "Face for the names of called functions.")
 
+(defface lisp-m-macro-face
+  '((t :inherit font-lock-preprocessor-face))
+  "Face for macro names, such as #if.")
+
 (defface lisp-m-operator-face
   '((t :inherit font-lock-keyword-face))
   "Face for `->' and `='.")
@@ -72,17 +81,21 @@ the line after its `='."
     (modify-syntax-entry ?\} "){" st)
     (dolist (c '(?\; ?. ?= ?- ?>))
       (modify-syntax-entry c "." st))
+    (modify-syntax-entry ?# "'" st)
     st)
   "Syntax table for `lisp-m-mode'.")
 
 (defconst lisp-m-font-lock-keywords
-  `(;; Definitions: the name and parameters in f[x; y] =
-    ("^[ \t]*\\([a-z]+\\)[ \t]*\\[\\([a-z; \t]*\\)\\][ \t]*="
-     (1 font-lock-function-name-face)
+  `(;; Definitions: the name and parameters in f[x; y] = or #m[x; y] =
+    ("^[ \t]*\\(#?[a-z]+\\)[ \t]*\\[\\([a-z; \t]*\\)\\][ \t]*="
+     (1 (if (eq (char-after (match-beginning 1)) ?#)
+            'lisp-m-macro-face
+          'font-lock-function-name-face))
      ("[a-z]+"
       (progn (goto-char (match-beginning 2)) (match-end 2))
       nil
       (0 font-lock-variable-name-face)))
+    ("#[a-z]+" . 'lisp-m-macro-face)
     (,(regexp-opt lisp-m-builtins 'words) . font-lock-builtin-face)
     ("\\<\\([a-z]+\\)[ \t]*\\[" 1 'lisp-m-call-face)
     ("\\<\\(?:T\\|NIL\\)\\>" . 'lisp-m-truth-face)

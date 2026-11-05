@@ -5,7 +5,7 @@ build-type:      Simple
 
 executable lisp-m
   main-is:          Main.hs
-  other-modules:    Lisp, Syntax, Paths_lisp_m
+  other-modules:    Lisp, Macro, Syntax, Paths_lisp_m
   autogen-modules:  Paths_lisp_m
   hs-source-dirs:   .
   build-depends:    base, mtl, parsec, pretty, containers, directory, process, unix

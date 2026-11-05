@@ -31,6 +31,7 @@ import qualified Text.PrettyPrint as P
 import Text.Read (readMaybe)
 
 import Lisp (Def, MDef, MExp, Name, evalMExp)
+import Macro (expand, isMacro)
 import Paths_lisp_m (version)
 import Syntax (builtins, parseProgram, prettyMDef)
 
@@ -171,15 +172,35 @@ process st s = case dropWhile isSpace s of
     Left e -> parseFailure st "" s e >> pure (Just st)
     Right items -> Just <$> runItems False st items
 
+-- Macros are stored as written; function bodies and expressions are
+-- expanded with the macros defined so far
 runItems :: Bool -> St -> [Either (MDef String) (MExp String)] -> IO St
 runItems quiet = foldM item
   where
-    item st (Left d@(f, (xs, _))) = do
+    item st (Left d@(f, (xs, body)))
+      | isMacro f = define st d
+      | otherwise = case expand (defs st) body of
+          Left msg -> failure st ("in the definition of " ++ f ++ ": " ++ msg) >> pure st
+          Right body' -> define st (f, (xs, body'))
+    item st (Right m) = either (failure st) (evalPrint st) (expand (defs st) m) >> pure st
+    define st d@(f, (xs, _)) = do
       let verb = if isJust (lookup f (defs st)) then "redefined " else "defined "
       unless quiet $
         say (paintWith st "2" verb ++ paint (colour st) (f ++ "[" ++ intercalate "; " xs ++ "]"))
       pure st{defs = d : filter ((/= f) . fst) (defs st)}
-    item st (Right m) = evalPrint st m >> pure st
+
+-- Show input after macro expansion, without evaluating it
+showExpansion :: St -> String -> IO ()
+showExpansion st s
+  | all isSpace s = failure st "usage: :expand e"
+  | otherwise = case parseProgram "input" s of
+      Left e -> parseFailure st "" s e
+      Right items -> mapM_ one items
+  where
+    one (Right m) = either (failure st) (say . paint (colour st) . show) (expand (defs st) m)
+    one (Left (f, (xs, body)))
+      | isMacro f = showDefs st [(f, (xs, body))]
+      | otherwise = either (failure st) (\body' -> showDefs st [(f, (xs, body'))]) (expand (defs st) body)
 
 evalPrint :: St -> MExp String -> IO ()
 evalPrint st m = try (evaluate (force (runExcept (runReaderT (evalMExp m) ([], defs st))))) >>= \case
@@ -229,6 +250,7 @@ commands =
   , ("quit",   "",      "leave the REPL (or C-d)",       \_ _ -> pure Nothing)
   , ("defs",   "",      "list all definitions",          \st _ -> showDefs st (reverse (defs st)) >> continue st)
   , ("show",   "f ...", "show the given definitions",    \st fs -> showNamed st fs >> continue st)
+  , ("expand", "e",     "show e after macro expansion",  \st ws -> showExpansion st (unwords ws) >> continue st)
   , ("load",   "file",  "load definitions from a file",  \st args -> Just <$> loadFile st (unwords args))
   , ("reload", "",      "load the last file again",      \st _ -> maybe (failure st "no file loaded yet" >> continue st)
                                                                         (fmap Just . loadFile st) (lastFile st))
@@ -283,6 +305,8 @@ help st = mapM_ say $
        , ("f[e; e]", "call a function")
        , ("atom eq cons car cdr", "built-in functions")
        , ("{p -> e; q -> e}", "conditional: the first true p selects its e")
+       , ("#m[x; y] = e", "define a macro")
+       , ("#m[a; b]", "is replaced by e, with x and y replaced by a and b")
        , ("T NIL", "true and false; NIL is also the empty list")
        , ("A (A B) (A . B)", "S-expressions: atoms, lists and pairs")
        ]
@@ -298,11 +322,15 @@ complete st t p
   | ':' : rest <- before, let cmd = takeWhile (not . isSpace) rest
   , not (null cmd), cmd `isPrefixOf` "load" = files
   | otherwise =
-      pure (start, sort (nub [n | not (null word), n <- builtins ++ map fst (defs st), word `isPrefixOf` n]))
+      pure (start, sort (nub [n | not (null word), n <- names, word `isPrefixOf` n]))
   where
     before = take p t
     word = reverse (takeWhile isLower (reverse before))
     start = p - length word
+    -- After #, complete macro names (without their #)
+    names
+      | take 1 (drop (length word) (reverse before)) == "#" = [drop 1 f | (f, _) <- defs st, isMacro f]
+      | otherwise = builtins ++ filter (not . isMacro) (map fst (defs st))
     files = do
       let tok = reverse (takeWhile (not . isSpace) (reverse before))
           (dir, base) = let (b, d) = break (== '/') (reverse tok) in (reverse d, reverse b)
@@ -433,6 +461,7 @@ tokens s@(c : cs)
   | isUpper c =
       let (w, rest) = span (\x -> isUpper x || isDigit x) s
       in map (const (if w `elem` ["T", "NIL"] then "36" else "32")) w ++ tokens rest
+  | c == '#', (w@(_ : _), rest) <- span isLower cs = map (const "1;34") (c : w) ++ tokens rest
   | "->" `isPrefixOf` s = "1;33" : "1;33" : tokens (drop 2 s)
   | c == '=' = "1;33" : tokens cs
   | otherwise = "" : tokens cs
