@@ -1,0 +1,113 @@
+
+ff[x] = { atom[x] -> x; T -> ff[car[x]] }
+
+subst[x; y; z] = {
+  atom[z] -> { eq[z; y] -> x; T -> z };
+  T       -> cons[subst[x; y; car[z]]; subst[x; y; cdr[z]]]
+}
+
+#and[x; y] = { x -> y; T -> NIL }
+#or[x; y]  = { x -> T; T -> y   }
+not[x]     = { x -> NIL; T -> T }
+
+equal[x; y] = 
+  #or[#and[atom[x]; #and[atom[y]; eq[x; y]]];
+      #and[not[atom[x]]; #and[not[atom[y]];
+                              #and[equal[car[x]; car[y]];
+                                   equal[cdr[x]; cdr[y]]]]]]
+
+null[x] = #and[atom[x]; eq[x; NIL]]
+
+append[x; y] = { null[x] -> y; T -> cons[car[x]; append[cdr[x]; y]] }
+
+among[x; y] = #or[#and[not[null[y]]; equal[x; car[y]]];
+                  among[x; cdr[y]]]
+
+list1[x] = cons[x; NIL]
+list2[x; y] = cons[x; list1[y]]
+
+pair[x; y] = {
+  #and[null[x]; null[y]] -> NIL;
+  #and[not[atom[x]]; not[atom[y]]] ->
+  cons[list2[car[x]; car[y]];
+       pair[cdr[x]; cdr[y]]]
+}
+
+caar[x] = car[car[x]]
+cdar[x] = cdr[car[x]]
+cadr[x] = car[cdr[x]]
+cddr[x] = cdr[cdr[x]]
+caaar[x] = car[caar[x]]
+cdaar[x] = cdr[caar[x]]
+cadar[x] = car[cdar[x]]
+cddar[x] = cdr[cdar[x]]
+caadr[x] = car[cadr[x]]
+cdadr[x] = cdr[cadr[x]]
+caddr[x] = car[cddr[x]]
+cdddr[x] = cdr[cddr[x]]
+caaaar[x] = car[caaar[x]]
+cdaaar[x] = cdr[caaar[x]]
+cadaar[x] = car[cdaar[x]]
+cddaar[x] = cdr[cdaar[x]]
+caadar[x] = car[cadar[x]]
+cdadar[x] = cdr[cadar[x]]
+caddar[x] = car[cddar[x]]
+cdddar[x] = cdr[cddar[x]]
+caaadr[x] = car[caadr[x]]
+cdaadr[x] = cdr[caadr[x]]
+cadadr[x] = car[cdadr[x]]
+cddadr[x] = cdr[cdadr[x]]
+caaddr[x] = car[caddr[x]]
+cdaddr[x] = cdr[caddr[x]]
+cadddr[x] = car[cdddr[x]]
+cddddr[x] = cdr[cdddr[x]]
+
+assoc[x; y] = {
+  eq[caar[y]; x] -> cadar[y];
+  T              -> assoc[x; cdr[y]]
+}
+
+sub2[x; z] = {
+  null[x]        -> z;
+  eq[caar[x]; z] -> cadar[x];
+  T              -> sub2[cdr[x]; z]
+}
+
+sublis[x; y] = {
+  atom[y] -> sub2[x; y];
+  T -> cons[sublis[x; car[y]]; sublis[x; cdr[y]]]
+}
+
+apply[f; args] = eval[cons[f; appq[args]]; NIL]
+
+appq[m] = {
+  null[m] -> NIL;
+  T -> cons[list2[QUOTE; car[m]]; appq[cdr[m]]]
+}
+
+eval[e; a] = {
+  atom[e] -> assoc[e; a];
+  atom[car[e]] -> {
+    eq[car[e]; QUOTE] -> cadr[e];
+    eq[car[e]; EQ]    -> atom[eval[cadr[e]; a]];
+    eq[car[e]; COND]  -> evcon[cdr[e]; a];
+    eq[car[e]; CAR]   -> car[eval[cadr[e]; a]];
+    eq[car[e]; CDR]   -> cdr[eval[cadr[e]; a]];
+    eq[car[e]; CONS]  -> cons[eval[cadr[e]; a]; eval[caddr[e]; a]];
+    T -> eval[cons[assoc[car[e]; a]; evlis[cdr[e]; a]]; a]
+  };
+  eq[caar[e]; LABEL]  ->
+  eval[cons[caddar[e]; cdr[e]]; cons[list2[cadar[e]; car[e]]; a]];
+  eq[caar[e]; LAMBDA] ->
+  eval[caddar[e]; append[pair[cadar[e]; evlis[cdr[e]; a]]; a]]
+}
+
+evcon[e; a] = {
+  eval[caar[e]; a] -> eval[cadar[e]; a];
+  T                -> evcon[cdr[c]; a]
+}
+
+evlis[m; a] = {
+  null[m] -> NIL;
+  T -> cons[eval[car[m]; a]; evlis[cdr[m]; a]]
+}
