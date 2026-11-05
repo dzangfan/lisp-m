@@ -6,7 +6,7 @@ import Control.Exception
 import Control.Monad (foldM, forM, unless, when)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Reader (runReaderT)
-import Data.Char (chr, isAlphaNum, isDigit, isLower, isSpace, isUpper, ord, toLower)
+import Data.Char (chr, isAlphaNum, isAsciiLower, isAsciiUpper, isDigit, isSpace, ord, toLower)
 import Data.Either (lefts)
 import Data.Functor ((<&>))
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
@@ -309,6 +309,7 @@ help st = mapM_ say $
        , ("#m[a; b]", "is replaced by e, with x and y replaced by a and b")
        , ("T NIL", "true and false; NIL is also the empty list")
        , ("A (A B) (A . B)", "S-expressions: atoms, lists and pairs")
+       , ("x f2 #m1 A B2", "names: a letter, then letters and digits")
        , ("// text", "comment to the end of the line")
        , ("/* text */", "comment, possibly over several lines")
        ]
@@ -327,7 +328,7 @@ complete st t p
       pure (start, sort (nub [n | not (null word), n <- names, word `isPrefixOf` n]))
   where
     before = take p t
-    word = reverse (takeWhile isLower (reverse before))
+    word = dropWhile isDigit (reverse (takeWhile isSmall (reverse before)))
     start = p - length word
     -- After #, complete macro names (without their #)
     names
@@ -471,19 +472,25 @@ highlight cursor s
              | otherwise -> b
       Nothing -> sty
 
+-- Characters of names: small for functions, variables and macros,
+-- capital for atoms; digits may follow the first letter
+isSmall, isCapital :: Char -> Bool
+isSmall c   = isAsciiLower c || isDigit c
+isCapital c = isAsciiUpper c || isDigit c
+
 tokens :: String -> [String]
 tokens [] = []
 tokens s@(c : cs)
-  | isLower c =
-      let (w, rest) = span isLower s
+  | isAsciiLower c =
+      let (w, rest) = span isSmall s
           sty | w `elem` builtins = "1;35"
               | take 1 (dropWhile isSpace rest) == "[" = "34"
               | otherwise = ""
       in map (const sty) w ++ tokens rest
-  | isUpper c =
-      let (w, rest) = span (\x -> isUpper x || isDigit x) s
+  | isAsciiUpper c =
+      let (w, rest) = span isCapital s
       in map (const (if w `elem` ["T", "NIL"] then "36" else "32")) w ++ tokens rest
-  | c == '#', (w@(_ : _), rest) <- span isLower cs = map (const "1;34") (c : w) ++ tokens rest
+  | c == '#', d : _ <- cs, isAsciiLower d, (w, rest) <- span isSmall cs = map (const "1;34") (c : w) ++ tokens rest
   | "->" `isPrefixOf` s = "1;33" : "1;33" : tokens (drop 2 s)
   | c == '=' = "1;33" : tokens cs
   | otherwise = "" : tokens cs

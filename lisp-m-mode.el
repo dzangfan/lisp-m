@@ -93,17 +93,17 @@ the line after its `='."
 
 (defconst lisp-m-font-lock-keywords
   `(;; Definitions: the name and parameters in f[x; y] = or #m[x; y] =
-    ("^[ \t]*\\(#?[a-z]+\\)[ \t]*\\[\\([a-z; \t]*\\)\\][ \t]*="
+    ("^[ \t]*\\(#?[a-z][a-z0-9]*\\)[ \t]*\\[\\([a-z0-9; \t]*\\)\\][ \t]*="
      (1 (if (eq (char-after (match-beginning 1)) ?#)
             'lisp-m-macro-face
           'font-lock-function-name-face))
-     ("[a-z]+"
+     ("[a-z][a-z0-9]*"
       (progn (goto-char (match-beginning 2)) (match-end 2))
       nil
       (0 font-lock-variable-name-face)))
-    ("#[a-z]+" . 'lisp-m-macro-face)
+    ("#[a-z][a-z0-9]*" . 'lisp-m-macro-face)
     (,(regexp-opt lisp-m-builtins 'words) . font-lock-builtin-face)
-    ("\\<\\([a-z]+\\)[ \t]*\\[" 1 'lisp-m-call-face)
+    ("\\<\\([a-z][a-z0-9]*\\)[ \t]*\\[" 1 'lisp-m-call-face)
     ("\\<\\(?:T\\|NIL\\)\\>" . 'lisp-m-truth-face)
     ("\\<[A-Z][A-Z0-9]*\\>" . 'lisp-m-atom-face)
     ("->\\|=" . 'lisp-m-operator-face)

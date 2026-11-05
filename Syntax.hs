@@ -23,7 +23,7 @@ instance AtBool String where
 -- White space, including comments: // to the end of the line, and
 -- /* to the next */, which may span lines and does not nest, as in C
 sc :: Parser ()
-sc = skipMany (skipMany1 space <|> lineComment <|> blockComment) <?> ""
+sc = skipMany ((skipMany1 space <|> lineComment <|> blockComment) <?> "")
   where
     lineComment  = try (string "//") *> skipMany (noneOf "\n")
     blockComment = try (string "/*") *> (manyTill anyChar (try (string "*/")) <?> "end of comment */") *> pure ()
@@ -39,11 +39,20 @@ parens   = between (symbol "(") (symbol ")")
 brackets = between (symbol "[") (symbol "]")
 braces   = between (symbol "{") (symbol "}")
 
+-- Names are a letter followed by letters and digits: small letters for
+-- functions, variables and macros, capitals for atoms
+small, capital :: Parser Char
+small   = oneOf ['a' .. 'z']
+capital = oneOf ['A' .. 'Z']
+
+name :: Parser Char -> Parser String
+name letter = (:) <$> letter <*> many (letter <|> digit)
+
 ident :: Parser Name
-ident = lexeme (many1 lower) <?> "identifier"
+ident = lexeme (name small) <?> "identifier"
 
 atom :: Parser String
-atom = lexeme ((:) <$> upper <*> many (upper <|> digit)) <?> "atom"
+atom = lexeme (name capital) <?> "atom"
 
 -- S-expressions: A | () | (s ...) | (s ... . s)
 
@@ -62,7 +71,7 @@ sexp = SAt <$> atom <|> parens body <?> "S-expression"
 -- Macro names are tagged with #; a macro call #m[...] is kept as an
 -- application of the function named #m until it is expanded
 macroName :: Parser Name
-macroName = lexeme ((:) <$> char '#' <*> many1 lower) <?> "macro name"
+macroName = lexeme ((:) <$> char '#' <*> name small) <?> "macro name"
 
 -- M-expressions: x | f[m; ...] | #m[m; ...] | {m -> m; ...} | S-expression
 
