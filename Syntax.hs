@@ -54,7 +54,7 @@ sexp = SAt <$> atom <|> parens body <?> "S-expression"
              else option nil (symbol "." *> sexp)
       return (foldr SPr end xs)
 
--- M-expressions: x | f[m; ...] | {m -> m, ...} | S-expression
+-- M-expressions: x | f[m; ...] | {m -> m; ...} | S-expression
 
 mexp :: Parser (MExp String)
 mexp = cond <|> (MLit <$> sexp) <|> varOrApp <?> "M-expression"
@@ -62,7 +62,7 @@ mexp = cond <|> (MLit <$> sexp) <|> varOrApp <?> "M-expression"
     varOrApp = do
       f <- ident
       option (MVar f) (brackets (mexp `sepBy` symbol ";") >>= builtin f)
-    cond   = MCnd <$> braces (clause `sepBy1` symbol ",")
+    cond   = MCnd <$> braces (clause `sepBy1` symbol ";")
     clause = (,) <$> mexp <* symbol "->" <*> mexp
 
 builtins :: [Name]
@@ -112,7 +112,7 @@ prettyMExp m = case m of
   MLit s    -> prettySExp s
   MVar x    -> P.text x
   MApp f ms -> app f ms
-  MCnd cs   -> P.braces (P.sep (P.punctuate P.comma (map clause cs)))
+  MCnd cs   -> P.braces (P.sep (P.punctuate P.semi (map clause cs)))
   MAtom n   -> app "atom" [n]
   MEq n o   -> app "eq" [n, o]
   MCons n o -> app "cons" [n, o]

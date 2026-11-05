@@ -11,3 +11,6 @@ cabal.project.local*
 *.hi
 *.dyn_o
 *.dyn_hi
+
+# Emacs
+*.elc

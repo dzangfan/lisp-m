@@ -282,7 +282,7 @@ help st = mapM_ say $
        [ ("f[x; y] = e", "define a function")
        , ("f[e; e]", "call a function")
        , ("atom eq cons car cdr", "built-in functions")
-       , ("{p -> e, q -> e}", "conditional: the first true p selects its e")
+       , ("{p -> e; q -> e}", "conditional: the first true p selects its e")
        , ("T NIL", "true and false; NIL is also the empty list")
        , ("A (A B) (A . B)", "S-expressions: atoms, lists and pairs")
        ]
