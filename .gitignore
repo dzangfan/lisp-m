@@ -1,0 +1,13 @@
+# Cabal
+dist-newstyle/
+cabal.project.local*
+.ghc.environment.*
+
+# Stack
+.stack-work/
+
+# GHC output from compiling outside Cabal
+*.o
+*.hi
+*.dyn_o
+*.dyn_hi

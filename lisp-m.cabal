@@ -1,0 +1,13 @@
+cabal-version:   3.4
+name:            lisp-m
+version:         0.1.0.0
+build-type:      Simple
+
+executable lisp-m
+  main-is:          Main.hs
+  other-modules:    Lisp, Syntax, Paths_lisp_m
+  autogen-modules:  Paths_lisp_m
+  hs-source-dirs:   .
+  build-depends:    base, mtl, parsec, pretty, containers, directory, process, unix
+  default-language: GHC2021
+  ghc-options:      -rtsopts "-with-rtsopts=-K32m"
